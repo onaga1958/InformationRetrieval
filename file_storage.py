@@ -82,6 +82,9 @@ class FileStorage(object):
     def __contains__(self, key):
         return key in self._dict
 
+    def __len__(self):
+        return len(self._dict)
+
     def items(self):
         self.check_open()
 

@@ -13,7 +13,7 @@ size_t ALGO_REPORT_PERIODIC = 100000;
 
 struct PreprocessedData {
     std::unordered_set<uint64_t> remaining_hashes;
-    std::vector<std::unordered_map<uint16_t, std::unordered_set<uint64_t>>> inverted_indexes;
+    std::vector<std::unordered_map<uint16_t, std::vector<uint64_t>>> inverted_indexes;
 };
 PreprocessedData preprocessing();
 std::unordered_map<size_t, size_t> calc_group_sizes(PreprocessedData* data);
@@ -50,7 +50,7 @@ PreprocessedData preprocessing() {
             result.remaining_hashes.insert(simhash);
             auto parts = get_parts(simhash);
             for (size_t ind = 0; ind < MAX_DISTANCE + 1; ++ind) {
-                result.inverted_indexes[ind][parts[ind]].insert(simhash);
+                result.inverted_indexes[ind][parts[ind]].push_back(simhash);
             }
             ++line_ind;
             if (line_ind % PREPROCESSING_REPORT_PERIODIC == 0) {

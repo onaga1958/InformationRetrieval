@@ -1,32 +1,34 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <unordered_map>
-#include <unordered_set>
+#include <map>
+#include <set>
 #include <exception>
 #include <bitset>
+#include <cstring>
+#include <chrono>
 
 
 size_t MAX_DISTANCE = 3;
-size_t PREPROCESSING_REPORT_PERIODIC = 1000000;
-size_t ALGO_REPORT_PERIODIC = 100000;
+size_t PREPROCESSING_REPORT_PERIOD = 1000000;
+size_t ALGO_REPORT_PERIOD = 10000;
 
 struct PreprocessedData {
-    std::unordered_set<uint64_t> remaining_hashes;
-    std::vector<std::unordered_map<uint16_t, std::vector<uint64_t>>> inverted_indexes;
+    std::set<uint64_t> remaining_hashes;
+    std::vector<std::map<uint16_t, std::set<uint64_t>>> inverted_indexes;
 };
 PreprocessedData preprocessing();
-std::unordered_map<size_t, size_t> calc_group_sizes(PreprocessedData* data);
-void dump_group_sizes(const std::unordered_map<size_t, size_t>& sizes);
+std::map<size_t, size_t> calc_group_sizes(PreprocessedData* data);
+void dump_group_sizes(const std::map<size_t, size_t>& sizes);
 
 std::vector<uint16_t> get_parts(uint64_t simhash) {
     std::vector<uint16_t> parts(MAX_DISTANCE + 1);
-    std::memcpy(parts.data(), &simhash, sizeof(simhash));
+    std::memcpy(parts.data(), &simhash, 8);
     return parts;
 }
 
 bool check_distance(uint64_t alpha, uint64_t beta) {
-    return std::bitset<64>(alpha ^ beta).count() <= MAX_DISTANCE;
+    return __builtin_popcount(alpha ^ beta) <= MAX_DISTANCE;
 }
 
 int main() {
@@ -50,10 +52,10 @@ PreprocessedData preprocessing() {
             result.remaining_hashes.insert(simhash);
             auto parts = get_parts(simhash);
             for (size_t ind = 0; ind < MAX_DISTANCE + 1; ++ind) {
-                result.inverted_indexes[ind][parts[ind]].push_back(simhash);
+                result.inverted_indexes[ind][parts[ind]].insert(simhash);
             }
             ++line_ind;
-            if (line_ind % PREPROCESSING_REPORT_PERIODIC == 0) {
+            if (line_ind % PREPROCESSING_REPORT_PERIOD == 0) {
                 auto duration = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::steady_clock::now() - start);
                 std::cout << line_ind << " lines processed, it took ";
@@ -68,15 +70,15 @@ PreprocessedData preprocessing() {
     return result;
 }
 
-std::unordered_map<size_t, size_t> calc_group_sizes(PreprocessedData* data) {
+std::map<size_t, size_t> calc_group_sizes(PreprocessedData* data) {
     std::cout << "start algo" << std::endl;
     auto start = std::chrono::steady_clock::now();
     size_t group_cnt = 0;
-    std::unordered_map<size_t, size_t> sizes;
+    std::map<size_t, size_t> sizes;
     while (!data->remaining_hashes.empty()) {
         uint64_t simhash = *(data->remaining_hashes.begin());
         auto parts = get_parts(simhash);
-        std::unordered_set<uint64_t> curr_group({simhash});
+        std::set<uint64_t> curr_group({simhash});
         for (size_t ind = 0; ind < MAX_DISTANCE + 1; ++ind) {
             for (auto candidate : data->inverted_indexes[ind][parts[ind]]) {
                 if (check_distance(simhash, candidate)) {
@@ -92,10 +94,14 @@ std::unordered_map<size_t, size_t> calc_group_sizes(PreprocessedData* data) {
         }
         for (auto group_member : curr_group) {
             data->remaining_hashes.erase(group_member);
+            auto member_parts = get_parts(group_member);
+            for (size_t ind = 0; ind < MAX_DISTANCE + 1; ++ind) {
+                data->inverted_indexes[ind][member_parts[ind]].erase(group_member);
+            }
         }
 
         ++group_cnt;
-        if (group_cnt % ALGO_REPORT_PERIODIC == 0) {
+        if (group_cnt % ALGO_REPORT_PERIOD == 0) {
             auto duration = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::steady_clock::now() - start);
             std::cout << "found " << group_cnt << " groups, it took ";
@@ -107,7 +113,7 @@ std::unordered_map<size_t, size_t> calc_group_sizes(PreprocessedData* data) {
     return sizes;
 }
 
-void dump_group_sizes(const std::unordered_map<size_t, size_t>& sizes) {
+void dump_group_sizes(const std::map<size_t, size_t>& sizes) {
     std::cout << "write group size stats to the output file..." << std::endl;
     std::ofstream output_file("group_size_distribution.txt");
     if (output_file.is_open()) {
